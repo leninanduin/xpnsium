@@ -1,0 +1,24 @@
+{
+    "manifest_version": 2,
+
+    "name": "Xpnsium",
+    "description": "Track online shopping expenses.",
+    "version": "0.1",
+
+    "options_page": "options.html",
+    "content_scripts": [
+        {
+            "matches": ["*://*/*"],
+            "js": ["xpnsium.js"]
+        }
+    ],
+    "permissions": [
+        "history",
+        "storage"
+    ]
+    // ,
+    // "icons":{
+    //     "36": "icon-32.png",
+    //     "48": "icon-48.png"
+    // }
+}
