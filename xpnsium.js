@@ -22,44 +22,7 @@ function restore_options() {
         'user_email': ''
     }, function(items) {
         // console.log(items);
-        getTopHistoy();
         document.getElementById('email').value = items.user_email;
-    });
-}
-
-function getTopHistoy(){
-    // To look for history items visited in the last week,
-    // subtract a week of microseconds from the current time.
-    var microsecondsPerWeek = 1000 * 60 * 25;
-    var oneWeekAgo = (new Date).getTime() - microsecondsPerWeek;
-
-    // Track the number of callbacks from chrome.history.getVisits()
-    // that we expect to get.  When it reaches zero, we have all results.
-    var numRequestsOutstanding = 0;
-
-    chrome.history.search({
-        'text': '',              // Return every history item....
-        'startTime': oneWeekAgo  // that was accessed less than one week ago.
-    },
-    function(historyItems) {
-        console.log(historyItems);
-        // // For each history item, get details on all visits.
-        // for (var i = 0; i < historyItems.length; ++i) {
-        //     var url = historyItems[i].url;
-        //     var processVisitsWithUrl = function(url) {
-        //         // We need the url of the visited item to process the visit.
-        //         // Use a closure to bind the  url into the callback's args.
-        //         return function(visitItems) {
-        //             processVisits(url, visitItems);
-        //         };
-        //     };
-
-        //     chrome.history.getVisits({url: url}, processVisitsWithUrl(url));
-        //     numRequestsOutstanding++;
-        // }
-        // if (!numRequestsOutstanding) {
-        //     onAllVisitsProcessed();
-        // }
     });
 }
 
