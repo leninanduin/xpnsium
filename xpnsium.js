@@ -1,4 +1,4 @@
-
+//TODO: encrypt email
 // Saves options to chrome.storage
 function save_options() {
     var email = document.getElementById('email').value;

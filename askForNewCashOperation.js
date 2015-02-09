@@ -1,19 +1,23 @@
 // Legacy support for pre-event-pages.
 var oldChromeVersion = !chrome.runtime;
 var chrome_data = {user_email:""};
-
+var server_url = "http://localhost:5000";
+var debug = 1;
+function _log(a){
+    if (debug){
+        console.log(a);
+    }
+}
 function onInit() {
-    console.log('onInit');
     localStorage.requestFailureCount = 0;  // used for exponential backoff
     chrome.storage.sync.get({
         'user_email': ''
     }, function(items) {
-        console.log(items);
         if (items.user_email) {
             chrome_data.user_email = items.user_email;
-            askForNewCashOperation();
+            askForNewCashOperation(false);
         } else{
-            console.log("there is no user email, scheduling init...");
+            _log("there is no user email, scheduling init...");
             chrome.alarms.create("init", {delayInMinutes:1})
         }
     });
@@ -25,7 +29,7 @@ function onInit() {
 }
 
 function onAlarm(alarm) {
-  console.log('Got alarm', alarm);
+  _log('Got alarm', alarm);
   // |alarm| can be undefined because onAlarm also gets called from
   // window.setTimeout on old chrome versions.
   if (alarm && alarm.name == 'watchdog') {
@@ -33,34 +37,84 @@ function onAlarm(alarm) {
   } else if (alarm && alarm.name == 'init') {
     onInit();
   } else if (alarm && alarm.name == 'ask') {
-    askForNewCashOperation();
+    askForNewCashOperation(false);
   }
 }
 
 function onWatchdog() {
   chrome.alarms.get('ask', function(alarm) {
     if (alarm) {
-      console.log('Ask alarm exists. Yay.');
+      _log('Ask alarm exists. Yay.');
     } else {
-      console.log('Ask alarm doesn\'t exist!? ' +
+      _log('Ask alarm doesn\'t exist!? ' +
                   'Refreshing now and rescheduling.');
-      askForNewCashOperation();
+      askForNewCashOperation(false);
     }
   });
 }
 
-function askForNewCashOperation() {
-    console.log("askForNewCashOperation()");
+function askForNewCashOperation(alarm) {
     if(chrome_data.user_email) {
+        _log('asking for new operations...');
         $.ajax({
-            url: "http://localhost:5000/has_new_operations",
+            url: server_url+"/has_new_operations",
             method: "POST",
             data: chrome_data,
-            success: function( receivedData ){
-                console.log(receivedData);
-                //TODO: parse response time, get search history and send it to the server
-                //reschedule petition
-                chrome.alarms.create("ask", {delayInMinutes:1})
+            success: function( rsO ){
+                if (rsO.rowCount>0){
+                    for (var i in rsO.rows) {
+                        //TODO: put all this in a separate function
+                        //search history items and post them to the server
+                        ( function (operation) {
+                            _log(operation);
+                            var hItems = {_length:0};
+                            chrome.history.search({
+                                'text': '',
+                                'startTime': operation.t_start,
+                                'endTime': operation.t_end,
+                            },
+                            function(historyItems) {
+                                for (var i in historyItems) {
+                                    var h = historyItems[i];
+                                    var a = document.createElement('a');
+                                    a.setAttribute('href', h.url);
+
+                                    if(hasOwnProperty(hItems, a.hostname)){
+                                        hItems[a.hostname].push(h);
+                                    }else{
+                                        hItems[a.hostname] = [h];
+                                        hItems._length++;
+                                    }
+                                }
+
+                                if (hItems._length > 0){
+                                    _log('we have history items, auth_num: ' + operation.auth_num);
+                                    _log(hItems);
+                                    $.ajax({
+                                        url: server_url+"/save_browser_events",
+                                        method: "POST",
+                                        data: { authNum: operation.auth_num, historyItems: hItems },
+                                        success: function( rs ){
+                                            _log('history items saved successfully');
+                                            _log(rs);
+                                        },
+                                        complete: function(xhr, s){
+                                            _log('complete save_browser_events: '+s);
+                                        }
+                                    });
+                                }
+                            });
+                        })(rsO.rows[i]);
+                    }
+                }
+
+                if(alarm){
+                    //reschedule petition
+                    chrome.alarms.create("ask", {delayInMinutes:1})
+                }
+            },
+            complete: function(xhr, s){
+                _log('complete has_new_operations: '+s);
             }
         });
     }else{
@@ -68,40 +122,10 @@ function askForNewCashOperation() {
     }
 }
 
-function getTopHistoy(){
-    // To look for history items visited in the last week,
-    // subtract a week of microseconds from the current time.
-    var microsecondsPerWeek = 1000 * 60 * 25;
-    var oneWeekAgo = (new Date).getTime() - microsecondsPerWeek;
-
-    // Track the number of callbacks from chrome.history.getVisits()
-    // that we expect to get.  When it reaches zero, we have all results.
-    var numRequestsOutstanding = 0;
-
-    chrome.history.search({
-        'text': '',              // Return every history item....
-        'startTime': oneWeekAgo  // that was accessed less than one week ago.
-    },
-    function(historyItems) {
-        console.log(historyItems);
-        // // For each history item, get details on all visits.
-        // for (var i = 0; i < historyItems.length; ++i) {
-        //     var url = historyItems[i].url;
-        //     var processVisitsWithUrl = function(url) {
-        //         // We need the url of the visited item to process the visit.
-        //         // Use a closure to bind the  url into the callback's args.
-        //         return function(visitItems) {
-        //             processVisits(url, visitItems);
-        //         };
-        //     };
-
-        //     chrome.history.getVisits({url: url}, processVisitsWithUrl(url));
-        //     numRequestsOutstanding++;
-        // }
-        // if (!numRequestsOutstanding) {
-        //     onAllVisitsProcessed();
-        // }
-    });
+function hasOwnProperty(obj, prop) {
+    var proto = obj.__proto__ || obj.constructor.prototype;
+    return (prop in obj) &&
+        (!(prop in proto) || proto[prop] !== obj[prop]);
 }
 
 if (oldChromeVersion) {
